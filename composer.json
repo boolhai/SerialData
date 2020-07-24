@@ -1,0 +1,20 @@
+{
+    "name": "boolhai/sericaldata",
+    "description": "相机串口数据整合",
+    "authors": [
+        {
+            "name": "huanghai",
+            "email": "boolhai1993@gmail.com",
+            "homepage": "http://huanghai.space"
+        }
+    ],
+    "autoload": {
+        "psr-4": {"serialdata\\": "src/"}
+    },
+    "type": "library,",
+    "license": "MIT",
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=5.3"
+    }
+}
