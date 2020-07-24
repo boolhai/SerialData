@@ -11,7 +11,7 @@
     "autoload": {
         "psr-4": {"serialdata\\": "src/"}
     },
-    "type": "library,",
+    "type": "library",
     "license": "MIT",
     "minimum-stability": "dev",
     "require": {
