@@ -1,12 +1,15 @@
 <?php
-//蓝板
-class Serialdata3 {
-    private static $symbol='';//byte数据是否带0x
-    private static $s1_1='00';//帧头
-    private static $s1_2='64';
-    private static $s1_3='FF';
-    private static $s1_4='FF';
 
+
+namespace serialdata;
+
+
+class deviceyellow extends \serialdata\SerialBase
+{
+
+    private static $symbol='';//byte数据是否带0x
+    private static $s1_1='AA';//帧头
+    private static $s1_2='55';
     private static $s2_1='01';//保留
     private static $s2_2='64';
     private static $s2_3='00';
@@ -59,18 +62,13 @@ class Serialdata3 {
         0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 0x43, 0x83,
         0x41, 0x81, 0x80, 0x40
     );
+
     /**
-     * 无符号位移
-     * @param 10进制数 $a
-     * @param 位移位数 $n
-     * @return boolean
+     * crc16校验
+     *
+     * @param $ptr
+     * @return array
      */
-    public static function uright($a, $n)
-    {
-        $c = 2147483647>>($n-1);
-        return $c&($a>>$n);
-    }
-    //crc16校验
     public static function genCRC ($ptr){
         $uchCRCHi    =0xFF;
         $uchCRCLo    =0xFF;
@@ -87,24 +85,9 @@ class Serialdata3 {
         );
         return $res;
     }
-    //字符串转换成16进制
-    public static function str2hex($str){
-        $hex = '';
-        for($i=0,$length=mb_strlen($str); $i<$length; $i++){
-            $hex .= dechex(ord($str{$i}));
-        }
-        return $hex;
-    }
-    //16进制转换成字符串
-    public static function hex2str($hex){
-        $str = '';
-        $arr = str_split($hex, 2);
-        foreach($arr as $bit){
-            $str .= chr(hexdec($bit));
-        }
-        return $str;
-    }
+
     /**
+     *返回byte数组
      *
      * @param 功能码 $cmd
      * @param 子命令 $subcmd 行号
@@ -113,65 +96,86 @@ class Serialdata3 {
      * @param 次数 $time 临时显示时长/次数 0为永久
      * @return byte数组 $byte
      */
-    public static function packetData($cmd='',$subcmd='',$content=''){
+    public static function getbytearrbycmd($cmd='',$subcmd='',$content='',$content2=array(),$time='0'){
         $byte=array();
         $byte[]=self::$symbol.self::$s1_1;//帧头2位
         $byte[]=self::$symbol.self::$s1_2;
-        $byte[]=self::$symbol.self::$s1_3;
-        $byte[]=self::$symbol.self::$s1_4;
+        $byte[]=self::$symbol.self::$s2_1;//保留3位
+        $byte[]=self::$symbol.self::$s2_2;
+        $byte[]=self::$symbol.self::$s2_3;
         $byte[]=self::$symbol.$cmd;//命令1位
-        if($cmd==62){
-            $len=19;
-            if ($content!=='') {
-                $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
-                $len+=mb_strlen($gbkstr);
-                $len_txt=mb_strlen($gbkstr);
+        $test=chr(hexdec(self::$s2_1)).chr(hexdec(self::$s2_2)).chr(hexdec(self::$s2_3)).chr(hexdec($cmd));
+        //长度
+        $len=0;
+        if ($subcmd!=='') {//行号
+            $len++;
+            if ($cmd==20) {
+                $len++;//时间
             }
+            if ($cmd==26) {
+                $len=$len+3;//时间，颜色，保留
+            }
+            if ($cmd==25) {
+                $len=$len+2;//颜色，保留
+            }
+            if ($cmd=='f6') {
+                $len=3;//设置时间模式 固定
+            }
+            if ($cmd=='f0') {
+                $len=1;//设置音量 固定
+            }
+        }
+        if ($content!=='') {
+            $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
+            $len+=mb_strlen($gbkstr);
+        }
+        //组装好的固定字节
+        if (!empty($content2)) {
+            $len+=count($content2);
+        }
 
-            $byte[]=dechex($len);
-            $byte[]=$subcmd;//行号
-            $byte[]=(($len_txt>8)?'15':'00');//显示模式
-            $byte[]='01';//显示速度
-            $byte[]='00';//停留模式
-            $byte[]='05';//停留时间
-            $byte[]='00';//退出模式
-            $byte[]='01';//退出速度
-            $byte[]='03';//字体类型
-            $byte[]='00';//显示次数
-            $byte[]='FF';//红色分量
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]=dechex($len_txt);
-            $byte[]='00';
-        }elseif($cmd==30){
-            $len=1;
-            if ($content!=='') {
-                $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
-                $len+=mb_strlen($gbkstr);
+        $byte[]='00';
+        $test.=chr(0);
+        $byte[]=self::$symbol.dechex($len);
+        $test.=chr($len);
+        //
+        if ($subcmd!=='') {//行号
+            $byte[]=self::$symbol.$subcmd;
+            $test.=chr(hexdec($subcmd));
+            if ($cmd==20) {
+                $byte[]=self::$symbol.$time;//默认屏显00遍永久
+                $test.=chr(hexdec($time));
             }
-            $byte[]=dechex($len);
-            $byte[]='02';
-        }elseif($cmd==31){
-            $byte[]='00';
-        }elseif($cmd=='05'){
-            $byte[]='08';
-            $year=str_pad(dechex(date('Y')),4,'0',STR_PAD_LEFT);
-            $byte[]=substr($year,-2);
-            $byte[]=substr($year,0,2);
-            $byte[]=dechex(date('m'));
-            $byte[]=dechex(date('d'));
-            $byte[]=dechex(date('w')+1);
-            $byte[]=dechex(date('H'));
-            $byte[]=dechex(date('i'));
-            $byte[]=dechex(date('s'));
-        }elseif($cmd=='0D'){
-            $byte[]='01';
-            $byte[]=dechex(intval($subcmd));
+            if ($cmd==26) {//彩色临时显示
+                $byte[]=self::$symbol.$time;//默认屏显00遍永久
+                $test.=chr(hexdec($time));
+                if ($subcmd==1||$subcmd==3) {
+                    $col='1';
+                }else{
+                    $col='2';
+                }
+                $byte[]=self::$symbol.$col;//颜色1红2绿3黄4篮5紫6青7白
+                $test.=chr(hexdec($col));
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
+            if ($cmd==25) {//彩色广告
+                if ($subcmd==1||$subcmd==3) {
+                    $col='1';
+                }else{
+                    $col='2';
+                }
+                $byte[]=self::$symbol.$col;//颜色1红2绿3黄4篮5紫6青7白
+                $test.=chr(hexdec($col));
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
+            if ($cmd=='f6') {
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
         }
         if ($content!=='') {
             $hex = self::str2hex($gbkstr);
@@ -179,18 +183,26 @@ class Serialdata3 {
 
             foreach ($content_arr as $k=>$v){
                 $byte[]=self::$symbol.$v;
+                $test.=chr(hexdec($v));
             }
         }
-        $test='';
-        foreach($byte as $k => $v){
-            $byte[$k]=strtoupper($v);
-            $test.=chr('0x'.strtoupper($v));
+        //组装好的固定字节
+        if (!empty($content2)) {
+            foreach ($content2 as $k=>$v){
+                $byte[]=self::$symbol.$v;
+                $test.=chr(hexdec($v));
+            }
         }
+
+        $test.=chr(0);
+        $test.=chr(0);
         //CRC16校验
         $res= self::genCRC( $test );
-        $byte[]=self::$symbol.strtoupper($res['lo']);
-        $byte[]=self::$symbol.strtoupper($res['hi']);
-
+        $byte[]=self::$symbol.$res['hi'];
+        $byte[]=self::$symbol.$res['lo'];
+        //结束
+        $byte[]=self::$symbol.self::$end;
+        //return $byte;
         //base64
         $result=array();
         //$result['test']=$test;
@@ -198,71 +210,100 @@ class Serialdata3 {
         $result['dataLen']=count($byte);
         $str='';
         for ($i = 0; $i < count($byte); $i++){
-            $str.=chr('0x'.$byte[$i]);
+            $str.=chr(hexdec($byte[$i]));
         }
         $result['data']=base64_encode($str);
         return $result;
     }
 
-    public static function packetDataHex($cmd='',$subcmd='',$content=''){
+    /**
+     * @param string $cmd
+     * @param string $subcmd
+     * @param string $content
+     * @param array $content2
+     * @param string $time
+     * @return array
+     */
+    public static function packetDataHex($cmd='',$subcmd='',$content='',$content2=array(),$time='0'){
         $byte=array();
         $byte[]=self::$symbol.self::$s1_1;//帧头2位
         $byte[]=self::$symbol.self::$s1_2;
-        $byte[]=self::$symbol.self::$s1_3;
-        $byte[]=self::$symbol.self::$s1_4;
+        $byte[]=self::$symbol.self::$s2_1;//保留3位
+        $byte[]=self::$symbol.self::$s2_2;
+        $byte[]=self::$symbol.self::$s2_3;
         $byte[]=self::$symbol.$cmd;//命令1位
-        if($cmd==62){
-            $len=19;
-            if ($content!=='') {
-                $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
-                $len+=mb_strlen($gbkstr);
-                $len_txt=mb_strlen($gbkstr);
+        $test=chr(hexdec(self::$s2_1)).chr(hexdec(self::$s2_2)).chr(hexdec(self::$s2_3)).chr(hexdec($cmd));
+        //长度
+        $len=0;
+        if ($subcmd!=='') {//行号
+            $len++;
+            if ($cmd==20) {
+                $len++;//时间
             }
+            if ($cmd==26) {
+                $len=$len+3;//时间，颜色，保留
+            }
+            if ($cmd==25) {
+                $len=$len+2;//颜色，保留
+            }
+            if ($cmd=='f6') {
+                $len=3;//设置时间模式 固定
+            }
+            if ($cmd=='f0') {
+                $len=1;//设置音量 固定
+            }
+        }
+        if ($content!=='') {
+            $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
+            $len+=mb_strlen($gbkstr);
+        }
+        //组装好的固定字节
+        if (!empty($content2)) {
+            $len+=count($content2);
+        }
 
-            $byte[]=dechex($len);
-            $byte[]=$subcmd;//行号
-            $byte[]=(($len_txt>8)?'15':'00');//显示模式
-            $byte[]='01';//显示速度
-            $byte[]='00';//停留模式
-            $byte[]='05';//停留时间
-            $byte[]='00';//退出模式
-            $byte[]='01';//退出速度
-            $byte[]='03';//字体类型
-            $byte[]='00';//显示次数
-            $byte[]='FF';//红色分量
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]='00';
-            $byte[]=dechex($len_txt);
-            $byte[]='00';
-        }elseif($cmd==30){
-            $len=1;
-            if ($content!=='') {
-                $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
-                $len+=mb_strlen($gbkstr);
+        $byte[]='00';
+        $test.=chr(0);
+        $byte[]=self::$symbol.dechex($len);
+        $test.=chr($len);
+        //
+        if ($subcmd!=='') {//行号
+            $byte[]=self::$symbol.$subcmd;
+            $test.=chr(hexdec($subcmd));
+            if ($cmd==20) {
+                $byte[]=self::$symbol.$time;//默认屏显00遍永久
+                $test.=chr(hexdec($time));
             }
-            $byte[]=dechex($len);
-            $byte[]='02';
-        }elseif($cmd==31){
-            $byte[]='00';
-        }elseif($cmd=='05'){
-            $byte[]='08';
-            $year=str_pad(dechex(date('Y')),4,'0',STR_PAD_LEFT);
-            $byte[]=substr($year,-2);
-            $byte[]=substr($year,0,2);
-            $byte[]=dechex(date('m'));
-            $byte[]=dechex(date('d'));
-            $byte[]=dechex(date('w')+1);
-            $byte[]=dechex(date('H'));
-            $byte[]=dechex(date('i'));
-            $byte[]=dechex(date('s'));
-        }elseif($cmd=='0D'){
-            $byte[]='01';
-            $byte[]=dechex(intval($subcmd));
+            if ($cmd==26) {//彩色临时显示
+                $byte[]=self::$symbol.$time;//默认屏显00遍永久
+                $test.=chr(hexdec($time));
+                if ($subcmd==1||$subcmd==3) {
+                    $col='1';
+                }else{
+                    $col='2';
+                }
+                $byte[]=self::$symbol.$col;//颜色1红2绿3黄4篮5紫6青7白
+                $test.=chr(hexdec($col));
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
+            if ($cmd==25) {//彩色广告
+                if ($subcmd==1||$subcmd==3) {
+                    $col='1';
+                }else{
+                    $col='2';
+                }
+                $byte[]=self::$symbol.$col;//颜色1红2绿3黄4篮5紫6青7白
+                $test.=chr(hexdec($col));
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
+            if ($cmd=='f6') {
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+                $byte[]=self::$symbol.'00';//保留0
+                $test.=chr(0);
+            }
         }
         if ($content!=='') {
             $hex = self::str2hex($gbkstr);
@@ -270,18 +311,26 @@ class Serialdata3 {
 
             foreach ($content_arr as $k=>$v){
                 $byte[]=self::$symbol.$v;
+                $test.=chr(hexdec($v));
             }
         }
-        $test='';
-        foreach($byte as $k => $v){
-            $byte[$k]=strtoupper($v);
-            $test.=chr('0x'.strtoupper($v));
+        //组装好的固定字节
+        if (!empty($content2)) {
+            foreach ($content2 as $k=>$v){
+                $byte[]=self::$symbol.$v;
+                $test.=chr(hexdec($v));
+            }
         }
+
+        $test.=chr(0);
+        $test.=chr(0);
         //CRC16校验
         $res= self::genCRC( $test );
-        $byte[]=self::$symbol.strtoupper($res['lo']);
-        $byte[]=self::$symbol.strtoupper($res['hi']);
-
+        $byte[]=self::$symbol.$res['hi'];
+        $byte[]=self::$symbol.$res['lo'];
+        //结束
+        $byte[]=self::$symbol.self::$end;
+        //return $byte;
         //base64
         $result=array();
         //$result['test']=$test;
@@ -289,20 +338,19 @@ class Serialdata3 {
         $result['dataLen']=count($byte);
         $str='';
         for ($i = 0; $i < count($byte); $i++){
-            $str.=chr('0x'.$byte[$i]);
+            $str.=chr(hexdec($byte[$i]));
         }
         $result['data']=strtoupper(bin2hex($str));
         return $result;
     }
 
-    //中文转byte数组
-    public static function gbk2byte($word){
-        $gbkstr = mb_convert_encoding($word,'GBK','UTF-8');//中文编码GBK
-        $hex = self::str2hex($gbkstr);
-        $word_arr=str_split($hex,2);
-        return $word_arr;
-    }
-    //语音金额
+
+    /**
+     * 语音金额
+     *
+     * @param $money
+     * @return array
+     */
     public static function moneyData($money){
         $money_arr=explode('.', $money);
         $money_1=$money_arr[0];//小数点前
@@ -341,9 +389,15 @@ class Serialdata3 {
         return self::gbk2byte($str);
     }
 
-    //语音时间
-    public static function timeData($hour,$minute){        
-		$hour_str='';		
+
+    /**
+     * 语音时间
+     *
+     * @param $hour
+     * @param $minute
+     * @return array
+     */
+    public static function timeData($hour,$minute){
         $hour_wan=intval($hour/10000);//万位
         $hour_qian=intval($hour%10000/1000);//千位
         $hour_bai=intval($hour%10000%1000/100);//百位
@@ -369,10 +423,36 @@ class Serialdata3 {
         if (!empty($hour_ge)) {
             $hour_str.=$hour_ge;
         }
-		
-        return $hour_str.'小时'.$minute.'分钟';
+
+        $hour_array=self::gbk2byte($hour_str);
+        $hour_array=array_merge($hour_array,array('2F'));//小时47
+
+        $minute_shi=intval($minute/10);//十位
+        $minute_ge=intval($minute%10);//个位
+        if ($hour==0) {
+            $minute_str='0';
+        }else{
+            $minute_str='';
+        };
+        if (!empty($minute_shi)) {
+            $minute_str.=$minute_shi.'十';
+        }
+        if (!empty($minute_ge)) {
+            $minute_str.=$minute_ge;
+        }
+        $minute_str.='分';
+        $minute_array=self::gbk2byte($minute_str);
+
+        return array_merge($hour_array,$minute_array);
     }
-    //剩余时间
+    //
+
+    /**
+     * 剩余时间
+     *
+     * @param $hour
+     * @return array
+     */
     public static function timeData2($hour){
         $hour_wan=intval($hour/10000);//万位
         $hour_qian=intval($hour%10000/1000);//千位
@@ -405,8 +485,3 @@ class Serialdata3 {
         return $hour_array;
     }
 }
-
-
-
-
-

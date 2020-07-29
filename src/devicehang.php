@@ -1,6 +1,12 @@
 <?php
-//杭州新爱控制板
-class Serialdata4 {
+
+
+namespace serialdata;
+
+
+class devicehang extends \serialdata\SerialBase
+{
+
     private static $symbol='';//byte数据是否带0x
     private static $s1_1='A5';//帧头
     private static $s1_2='A5';
@@ -55,18 +61,12 @@ class Serialdata4 {
         0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 0x43, 0x83,
         0x41, 0x81, 0x80, 0x40
     );
+
     /**
-     * 无符号位移
-     * @param 10进制数 $a
-     * @param 位移位数 $n
-     * @return boolean
+     * crc16校验
+     * @param $ptr
+     * @return array
      */
-    public static function uright($a, $n)
-    {
-        $c = 2147483647>>($n-1);
-        return $c&($a>>$n);
-    }
-    //crc16校验
     public static function genCRC ($ptr){
         $uchCRCHi    =0xFF;
         $uchCRCLo    =0xFF;
@@ -83,32 +83,15 @@ class Serialdata4 {
         );
         return $res;
     }
-    //字符串转换成16进制
-    public static function str2hex($str){
-        $hex = '';
-		$length=strlen($str);
-        for($i=0; $i<$length; $i++){
-            $hex .= str_pad(dechex(ord($str{$i})),2,'0',STR_PAD_LEFT);
-        }
-        return $hex;
-    }
-    //16进制转换成字符串
-    public static function hex2str($hex){
-        $str = '';
-        $arr = str_split($hex, 2);
-        foreach($arr as $bit){
-            $str .= chr(hexdec($bit));
-        }
-        return $str;
-    }
+
     public static function checksum($arr){
         $re=0;
         foreach($arr as $v){
             $re+=hexdec($v);
         }
-		$re%=256;
-		$re=str_pad(dechex($re),2,'0',STR_PAD_LEFT);
-		$re = ~pack("H*",$re);
+        $re%=256;
+        $re=str_pad(dechex($re),2,'0',STR_PAD_LEFT);
+        $re = ~pack("H*",$re);
         return bin2hex($re);
     }
 
@@ -121,20 +104,20 @@ class Serialdata4 {
      * @param 次数 $time 临时显示时长/次数 0为永久
      * @return byte数组 $byte
      */
-    public static function packetData($cmd='',$subcmd='',$content='', $iscmd=false, $bytes=array()){
+    public static function getbytearrbycmd($cmd='',$subcmd='',$content='', $iscmd=false, $bytes=array()){
         $byte=array();
         $byte[]=self::$symbol.self::$s1_1;//帧头2位
         $byte[]=self::$symbol.self::$s1_2;
         $byte[]=self::$symbol.$cmd;//命令1位
-        
-			$byte[]=0; //字节
-			$length=0;
-            $arr_sum=array();
-			if($subcmd){
-				$byte[]=$subcmd;
-				$arr_sum[]=$subcmd;
-				$length++;
-			}
+
+        $byte[]=0; //字节
+        $length=0;
+        $arr_sum=array();
+        if($subcmd){
+            $byte[]=$subcmd;
+            $arr_sum[]=$subcmd;
+            $length++;
+        }
         if($subcmd=='35'){
             $byte[]='02';
             $arr_sum[]='02';
@@ -147,38 +130,38 @@ class Serialdata4 {
                 }
             }
         }
-            $len_txt=0;
-            if ($content!=='') {
-				if($subcmd=='03' || $subcmd=='15'){
-					$content=self::makeMoney($content);
-				}
-				if($subcmd=='0E'){
-					$content=self::makeDate($content,3);
-				}
-                $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
-                $len_txt=strlen($gbkstr);
-                $length+=$len_txt;
+        $len_txt=0;
+        if ($content!=='') {
+            if($subcmd=='03' || $subcmd=='15'){
+                $content=self::makeMoney($content);
+            }
+            if($subcmd=='0E'){
+                $content=self::makeDate($content,3);
+            }
+            $gbkstr = mb_convert_encoding($content,'GBK','UTF-8');//中文编码GBK
+            $len_txt=strlen($gbkstr);
+            $length+=$len_txt;
 
-                $byte[]=dechex($len_txt);
-                $arr_sum[]=dechex($len_txt);
-                $length++;
+            $byte[]=dechex($len_txt);
+            $arr_sum[]=dechex($len_txt);
+            $length++;
+        }
+        if ($content!=='') {
+            if($iscmd){
+                $hex=dechex(intval($gbkstr));
+            }else{
+                $hex = self::str2hex($gbkstr);
             }
-            if ($content!=='') {
-				if($iscmd){
-					$hex=dechex(intval($gbkstr));
-				}else{
-					$hex = self::str2hex($gbkstr);
-				}
-                $content_arr=str_split($hex,2);
-                foreach ($content_arr as $k=>$v){
-                    $byte[]=self::$symbol.$v;
-                    $arr_sum[]=self::$symbol.$v;
-                }
+            $content_arr=str_split($hex,2);
+            foreach ($content_arr as $k=>$v){
+                $byte[]=self::$symbol.$v;
+                $arr_sum[]=self::$symbol.$v;
             }
-            $byte[]=self::checksum($arr_sum);
-				$length++;
-				$byte[3]=dechex($length);
-        
+        }
+        $byte[]=self::checksum($arr_sum);
+        $length++;
+        $byte[3]=dechex($length);
+
 
         $byte[]=self::$symbol.self::$s2_1;//帧尾2位
         $byte[]=self::$symbol.self::$s2_2;
@@ -257,43 +240,60 @@ class Serialdata4 {
         return $result;
     }
 
-    //中文转byte数组
-    public static function gbk2byte($word){
-        $gbkstr = mb_convert_encoding($word,'GBK','UTF-8');//中文编码GBK
-        $hex = self::str2hex($gbkstr);
-        $word_arr=str_split($hex,2);
-        return $word_arr;
-    }
-    //语音金额
+
+    /**
+     * 语音金额
+     *
+     * @param $money
+     * @return array
+     */
     public static function moneyData($money){
         $arr=explode('.',$money);
-		$hi=str_pad($arr[0],4,'0',STR_PAD_LEFT);
-		$lo=str_pad($arr[1],2,'0',STR_PAD_RIGHT);
-		$money=str_split($hi.$lo,1);
-		$tmp=array();
-		foreach($money as $v){
-			if($v==0){
-				$tmp[]=dechex(32);
-			}else{
-				$tmp[]=dechex(ord($v));
-			}
-		}
+        $hi=str_pad($arr[0],4,'0',STR_PAD_LEFT);
+        $lo=str_pad($arr[1],2,'0',STR_PAD_RIGHT);
+        $money=str_split($hi.$lo,1);
+        $tmp=array();
+        foreach($money as $v){
+            if($v==0){
+                $tmp[]=dechex(32);
+            }else{
+                $tmp[]=dechex(ord($v));
+            }
+        }
         return $tmp;
     }
+
+    /**
+     * 语音
+     *
+     * @param $money
+     * @return string
+     */
     public static function makeMoney($money){
         $arr=explode('.',$money);
-		$hi=str_pad($arr[0],4,chr(32),STR_PAD_LEFT);
-		$lo=str_pad($arr[1],2,chr(32),STR_PAD_RIGHT);
+        $hi=str_pad($arr[0],4,chr(32),STR_PAD_LEFT);
+        $lo=str_pad($arr[1],2,chr(32),STR_PAD_RIGHT);
         $money=$hi.$lo;
         //$money=str_replace('0',chr(32),$money);
-		return $money;
+        return $money;
     }
 
-    //时间
+    /**
+     * 时间
+     * @param $day
+     * @param $len
+     * @return mixed
+     */
     public static function makeDate($day,$len){
         return str_replace('0',chr(32),str_pad(intval($day),$len,chr(32),STR_PAD_LEFT));
     }
-    //剩余时间
+
+
+    /**
+     * 剩余时间
+     * @param $hour
+     * @return array
+     */
     public static function timeData2($hour){
         $hour_wan=intval($hour/10000);//万位
         $hour_qian=intval($hour%10000/1000);//千位
@@ -326,8 +326,3 @@ class Serialdata4 {
         return $hour_array;
     }
 }
-
-
-
-
-
